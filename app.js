@@ -5,7 +5,6 @@
    ========================================================= */
 
 // ---- AUTH ----
-// Obfuscated: btoa('060105') = "MDYwMTA1"
 const ACCESS_HASH = 'MDYwMTA1';
 
 function checkPassword(val) {
@@ -38,31 +37,49 @@ function doLogout() {
 
 // ---- BOOT ----
 document.addEventListener('DOMContentLoaded', () => {
-    // Apply stored theme before anything shows
     const theme = Storage.getTheme();
     document.documentElement.setAttribute('data-theme', theme);
     updateThemeBtn(theme);
 
-    // Check session
     if (sessionStorage.getItem('bs_auth') === '1') {
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
         initApp();
     } else {
-        // Focus password input
         setTimeout(() => document.getElementById('login-input').focus(), 50);
     }
 
-    // Enter key on login
     document.getElementById('login-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') handleLogin();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && e.target.id === 'reset-password-input') {
+            e.preventDefault();
+
+            const btn = document.querySelector('#reset-modal .btn-warning');
+            if (btn) {
+                btn.click();
+            }
+        }
+    });
+    document.getElementById('confirm-ok-btn').addEventListener('click', () => {
+        if (confirmCallback) confirmCallback();
+        closeConfirmModal();
+    });
+
+    document.getElementById('item-price-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') saveItem();
+    });
+    document.getElementById('item-name-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('item-price-input').focus();
     });
 });
 
 // ---- APP STATE ----
-let cart = []; // [{ id, name, price, qty }]
-let recentlyUsed = []; // item ids recently added
-let undoStack = []; // for undo last action
+let cart = [];
+let recentlyUsed = [];
+let undoStack = [];
 
 // ---- INIT ----
 function initApp() {
@@ -101,7 +118,7 @@ function updateThemeBtn(theme) {
     if (btn) btn.textContent = theme === 'dark' ? '☀' : '🌙';
 }
 
-// ---- MENU RENDERING ----
+// ---- MENU RENDERING (no per-item edit/delete) ----
 let searchQuery = '';
 
 function renderMenu(filter = '') {
@@ -130,10 +147,6 @@ function renderMenu(filter = '') {
 
         div.innerHTML = `
       ${shortcut}
-      <div class="menu-item-actions">
-        <button title="Edit" onclick="event.stopPropagation();openEditItemModal('${item.id}')">✎</button>
-        <button title="Delete" onclick="event.stopPropagation();confirmDeleteItem('${item.id}')">✕</button>
-      </div>
       <div class="menu-item-name">${escHtml(item.name)}</div>
       <div class="menu-item-price">₹${item.price.toFixed(2)}</div>
       <div class="menu-item-sold">${item.totalSold || 0} sold</div>
@@ -144,7 +157,7 @@ function renderMenu(filter = '') {
     });
 }
 
-// ---- SEARCH (debounced) ----
+// ---- SEARCH ----
 let searchTimer = null;
 
 function debounceSearch(val) {
@@ -164,7 +177,6 @@ function addToCart(item) {
         cart.push({ id: item.id, name: item.name, price: item.price, qty: 1 });
     }
 
-    // Mark recently used
     if (!recentlyUsed.includes(item.id)) recentlyUsed.push(item.id);
     if (recentlyUsed.length > 5) recentlyUsed.shift();
 
@@ -198,6 +210,8 @@ function clearCart() {
     if (cart.length === 0) return;
     undoStack.push({ action: 'clearCart', items: [...cart] });
     cart = [];
+    document.getElementById('cash-received').value = '';
+    document.getElementById('change-result').textContent = '';
     renderCart();
     updateCartTotals();
     showToast('Cart cleared', 'info');
@@ -251,10 +265,7 @@ function updateCartTotals() {
 function checkout() {
     if (cart.length === 0) return;
 
-    // Save sales
     Storage.addSaleEntries(cart);
-
-    // Increment sold counts
     cart.forEach(ci => Storage.incrementSold(ci.id, ci.qty));
 
     const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
@@ -263,9 +274,34 @@ function checkout() {
     undoStack.push({ action: 'checkout', items: [...cart] });
     cart = [];
     recentlyUsed = [];
+    document.getElementById('cash-received').value = '';
+    document.getElementById('change-result').textContent = '';
     renderCart();
     renderMenu(searchQuery);
     updateAnalytics();
+}
+
+// ---- BALANCE CALCULATOR ----
+function calculateChange() {
+    const cashInput = document.getElementById('cash-received');
+    const cash = parseFloat(cashInput.value);
+    const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    const resultDiv = document.getElementById('change-result');
+
+    if (isNaN(cash) || cash < 0) {
+        resultDiv.textContent = 'Enter valid amount';
+        resultDiv.style.color = 'var(--red)';
+        return;
+    }
+
+    if (cash < total) {
+        resultDiv.textContent = `Short by ₹${(total - cash).toFixed(2)}`;
+        resultDiv.style.color = 'var(--red)';
+    } else {
+        const change = cash - total;
+        resultDiv.textContent = change === 0 ? 'Exact amount' : `Change: ₹${change.toFixed(2)}`;
+        resultDiv.style.color = 'var(--green)';
+    }
 }
 
 // ---- ANALYTICS ----
@@ -275,43 +311,107 @@ function updateAnalytics() {
     const revenue = today.reduce((s, e) => s + e.total, 0);
     const itemsSold = today.reduce((s, e) => s + e.quantity, 0);
 
-    // Count bills (group by datetime proximity — 1 second window = 1 bill)
-    const billTimes = [...new Set(today.map(e =>
-        Math.floor(new Date(e.datetime).getTime() / 2000)))];
+    // Group into bills (within 2 seconds proximity)
+    const sorted = [...today].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    const bills = [];
+    let currentBill = null;
+
+    sorted.forEach(entry => {
+        const entryTime = new Date(entry.datetime).getTime();
+        if (!currentBill || (entryTime - currentBill.lastTime > 2000)) {
+            currentBill = { items: [entry], lastTime: entryTime };
+            bills.push(currentBill);
+        } else {
+            currentBill.items.push(entry);
+            currentBill.lastTime = entryTime;
+        }
+    });
 
     document.getElementById('stat-revenue').textContent = `₹${revenue.toFixed(0)}`;
     document.getElementById('stat-items-sold').textContent = itemsSold;
-    document.getElementById('stat-bills').textContent = billTimes.length;
+    document.getElementById('stat-bills').textContent = bills.length;
 
-    // Top item
     const tally = {};
     today.forEach(e => { tally[e.item] = (tally[e.item] || 0) + e.quantity; });
     const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
-    document.getElementById('stat-top-item').textContent = top ?
-        `${top[0]} (${top[1]})` :
-        '—';
+    document.getElementById('stat-top-item').textContent = top ? `${top[0]} (${top[1]})` : '—';
 
-    // Sales log list (last 20)
-    const listEl = document.getElementById('sales-log-list');
-    const last20 = [...today].reverse().slice(0, 20);
-    if (last20.length === 0) {
-        listEl.innerHTML = `<p class="no-data">No sales today</p>`;
+    // Render recent bills (newest first)
+    const listEl = document.getElementById('recent-bills-list');
+    if (bills.length === 0) {
+        listEl.innerHTML = `<p class="no-data">No bills today</p>`;
         return;
     }
+
+    // Show last 10 bills
+    const recentBills = bills.slice(-10); // get last 10 directly
     listEl.innerHTML = '';
-    last20.forEach(e => {
-        const time = new Date(e.datetime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-        const div = document.createElement('div');
-        div.className = 'sale-log-item';
-        div.innerHTML = `
-      <div>
-        <div class="sale-name">${escHtml(e.item)}</div>
-        <div class="sale-meta">×${e.quantity} · ${time}</div>
-      </div>
-      <div class="sale-amount">₹${e.total.toFixed(2)}</div>
+
+    const fragment = document.createDocumentFragment();
+
+    for (let i = recentBills.length - 1; i >= 0; i--) {
+        const bill = recentBills[i];
+
+        let billTotal = 0;
+        let itemCount = 0;
+
+        for (let j = 0; j < bill.items.length; j++) {
+            billTotal += bill.items[j].total;
+            itemCount += bill.items[j].quantity;
+        }
+
+        const firstItem = bill.items[0];
+        const timeStr = firstItem && firstItem.datetime ?
+            new Date(firstItem.datetime).toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            }) :
+            '';
+
+        const card = document.createElement('div');
+        card.className = 'bill-card';
+
+        const ids = bill.items.map(e => `'${e.id}'`).join(',');
+
+        card.innerHTML = `
+        <div class="bill-info">
+          <span class="bill-meta">Bill #${recentBills.length - i} — ${itemCount} items · ${timeStr}</span>
+        </div>
+        <span class="bill-total">₹${billTotal.toFixed(2)}</span>
+        <button class="bill-delete-btn" onclick="deleteBill('${escapeHtmlAttr(firstItem?.datetime)}', ${ids})" title="Delete bill">✕</button>
     `;
-        listEl.appendChild(div);
-    });
+
+        fragment.appendChild(card);
+    }
+
+    listEl.appendChild(fragment);
+}
+
+function deleteBill(firstDatetime, itemIds) {
+    showConfirm(
+        'Delete Bill',
+        'Are you sure you want to delete this entire bill from the sales log?',
+        () => {
+            const allSales = Storage.getSalesLog();
+            // Remove entries with the same first datetime (to identify the bill) and matching item ids
+            const updated = allSales.filter(s => {
+                if (itemIds.includes(s.id)) {
+                    // Also ensure it's the same bill timestamp proximity
+                    const billTime = new Date(firstDatetime).getTime();
+                    const sTime = new Date(s.datetime).getTime();
+                    return Math.abs(billTime - sTime) > 2000;
+                }
+                return true;
+            });
+            localStorage.setItem('bs_sales_log', JSON.stringify(updated));
+            updateAnalytics();
+            showToast('Bill deleted', 'info');
+        }
+    );
+}
+
+function escapeHtmlAttr(str) {
+    return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 // ---- ITEM MODAL ----
@@ -362,15 +462,58 @@ function saveItem() {
     renderMenu(searchQuery);
 }
 
-// Enter key in modal
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('item-price-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') saveItem();
+// ---- SELECT ITEM MODAL (for Edit / Delete) ----
+let selectModalCallback = null;
+
+function openEditSelectModal() {
+    openSelectItemModal('Edit Item', (item) => {
+        openEditItemModal(item.id);
     });
-    document.getElementById('item-name-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') document.getElementById('item-price-input').focus();
+}
+
+function openDeleteSelectModal() {
+    openSelectItemModal('Delete Item', (item) => {
+        confirmDeleteItem(item.id);
     });
-});
+}
+
+function openSelectItemModal(title, callback) {
+    const modal = document.getElementById('select-item-modal');
+    document.getElementById('select-modal-title').textContent = title;
+    const list = document.getElementById('select-item-list');
+    const items = Storage.getMenu();
+
+    if (items.length === 0) {
+        list.innerHTML = '<p class="no-data">No items available</p>';
+    } else {
+        list.innerHTML = items.map(item => `
+        <div class="item-select-row" onclick="selectModalPick('${item.id}')">
+          <span class="item-select-name">${escHtml(item.name)}</span>
+          <span class="item-select-price">₹${item.price.toFixed(2)}</span>
+        </div>
+      `).join('');
+    }
+
+    selectModalCallback = callback;
+    modal.classList.remove('hidden');
+}
+
+function selectModalPick(id) {
+    const item = Storage.getMenu().find(i => i.id === id);
+    if (!item) return;
+    const cb = selectModalCallback; // save the callback first
+    closeSelectItemModal(); // now it's safe to close (clears selectModalCallback)
+    if (cb) cb(item); // then execute it
+}
+
+function closeSelectItemModal() {
+    document.getElementById('select-item-modal').classList.add('hidden');
+    selectModalCallback = null;
+}
+
+function closeSelectItemModalOutside(e) {
+    if (e.target === document.getElementById('select-item-modal')) closeSelectItemModal();
+}
 
 // ---- DELETE ITEM ----
 function confirmDeleteItem(id) {
@@ -428,8 +571,10 @@ function doReset(type) {
         } else if (type === 'full') {
             Storage.fullReset();
             cart = [];
+            recentlyUsed = [];
             showToast('Full reset done. Reloading...', 'info');
             setTimeout(() => location.reload(), 1200);
+            return;
         }
         renderMenu(searchQuery);
         renderCart();
@@ -452,11 +597,6 @@ function closeConfirmModal() {
     confirmCallback = null;
 }
 
-document.getElementById('confirm-ok-btn').addEventListener('click', () => {
-    if (confirmCallback) confirmCallback();
-    closeConfirmModal();
-});
-
 // ---- TOAST ----
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -475,7 +615,6 @@ function showToast(message, type = 'info') {
 // ---- KEYBOARD SHORTCUTS ----
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', e => {
-        // Ignore when typing in inputs
         const tag = document.activeElement.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
@@ -490,6 +629,7 @@ function setupKeyboardShortcuts() {
             closeItemModal();
             closeResetModal();
             closeConfirmModal();
+            closeSelectItemModal();
         }
 
         if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {

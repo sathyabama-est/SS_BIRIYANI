@@ -14,21 +14,14 @@ const Storage = (() => {
 
     // Default menu items (15 items)
     const DEFAULT_MENU = [
-        { id: uid(), name: 'Masala Dosa', price: 70, totalSold: 0 },
-        { id: uid(), name: 'Idli (2 pcs)', price: 40, totalSold: 0 },
-        { id: uid(), name: 'Vada Sambar', price: 50, totalSold: 0 },
-        { id: uid(), name: 'Poori Bhaji', price: 60, totalSold: 0 },
-        { id: uid(), name: 'Upma', price: 45, totalSold: 0 },
-        { id: uid(), name: 'Pongal', price: 55, totalSold: 0 },
-        { id: uid(), name: 'Filter Coffee', price: 25, totalSold: 0 },
-        { id: uid(), name: 'Chai', price: 15, totalSold: 0 },
-        { id: uid(), name: 'Parotta', price: 35, totalSold: 0 },
-        { id: uid(), name: 'Chicken Curry', price: 130, totalSold: 0 },
-        { id: uid(), name: 'Egg Rice', price: 90, totalSold: 0 },
-        { id: uid(), name: 'Veg Fried Rice', price: 80, totalSold: 0 },
-        { id: uid(), name: 'Lemon Juice', price: 30, totalSold: 0 },
-        { id: uid(), name: 'Meals (Full)', price: 120, totalSold: 0 },
-        { id: uid(), name: 'Naan + Dal', price: 85, totalSold: 0 },
+        { id: uid(), name: 'Biriyani', price: 100, totalSold: 0 },
+        { id: uid(), name: 'Biriyani OFF', price: 80, totalSold: 0 },
+        { id: uid(), name: 'Biriyani OG', price: 160, totalSold: 0 },
+        { id: uid(), name: '100g - CHICKEN 65', price: 100, totalSold: 0 },
+        { id: uid(), name: '250g - CHICKEN 65', price: 200, totalSold: 0 },
+        { id: uid(), name: '500g - CHICKEN 65', price: 300, totalSold: 0 },
+        { id: uid(), name: 'Bread Halwa S', price: 40, totalSold: 0 },
+        { id: uid(), name: 'Bread Halwa M', price: 80, totalSold: 0 },
     ];
 
     function uid() {

@@ -3,8 +3,8 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BillStation — POS System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>SS BIRIYANI</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css" />
@@ -18,8 +18,7 @@
         <div class="login-card" id="login-card">
             <div class="login-logo">
                 <span class="logo-mark app-title" style="color: orange;">SS</span> <span class="app-title">BIRIYANI</span>
-
-                <p>Point of Sale System</p>
+                <p>TAMBARAM</p>
             </div>
             <div class="login-form">
                 <label>Access Code</label>
@@ -39,8 +38,6 @@
         <header class="app-header">
             <div class="header-left">
                 <span class="logo-mark app-title" style="color: orange;">SS</span> <span class="app-title">BIRIYANI</span>
-
-
             </div>
             <div class="header-center">
                 <div class="live-time" id="live-time"></div>
@@ -61,7 +58,11 @@
             <section class="panel panel-menu">
                 <div class="panel-header">
                     <h2>Menu</h2>
-                    <button class="btn btn-sm btn-primary" onclick="openAddItemModal()">+ Add</button>
+                    <div class="menu-toolbar">
+                        <button class="btn btn-sm btn-primary" onclick="openAddItemModal()">+ Add</button>
+                        <button class="btn btn-sm btn-ghost" onclick="openEditSelectModal()">✎ Edit</button>
+                        <button class="btn btn-sm btn-ghost" onclick="openDeleteSelectModal()">✕ Delete</button>
+                    </div>
                 </div>
                 <div class="search-wrap">
                     <input type="text" id="menu-search" placeholder="Search items..." oninput="debounceSearch(this.value)" />
@@ -76,6 +77,14 @@
                 <div class="panel-header">
                     <h2>Bill</h2>
                     <button class="btn btn-sm btn-ghost" onclick="clearCart()">✕ Clear</button>
+                </div>
+                <!-- Totals and checkout moved to the top -->
+                <div class="cart-footer cart-footer-top">
+                    <div class="cart-totals">
+                        <div class="total-row"><span>Subtotal</span><span id="subtotal">₹0.00</span></div>
+                        <div class="total-row grand"><span>TOTAL</span><span id="grand-total">₹0.00</span></div>
+                    </div>
+                    <button class="btn btn-checkout" onclick="checkout()" id="checkout-btn" disabled>Generate Bill ✓</button>
                 </div>
                 <div class="cart-table-wrap">
                     <table class="cart-table" id="cart-table">
@@ -98,14 +107,14 @@
                         <small>Click menu items to add</small>
                     </div>
                 </div>
-                <div class="cart-footer">
-                    <div class="cart-totals">
-                        <div class="total-row"><span>Subtotal</span><span id="subtotal">₹0.00</span></div>
-                        <div class="total-row grand"><span>TOTAL</span><span id="grand-total">₹0.00</span></div>
+                <!-- Balance calculator for giving change -->
+                <div class="balance-calc">
+                    <div class="balance-input-wrap">
+                        <label for="cash-received">Cash Received (₹)</label>
+                        <input type="number" id="cash-received" placeholder="0.00" min="0" step="0.01" />
                     </div>
-                    <button class="btn btn-checkout" onclick="checkout()" id="checkout-btn" disabled>
-            Generate Bill ✓
-          </button>
+                    <button class="btn btn-sm btn-primary" onclick="calculateChange()">Calculate Change</button>
+                    <div class="change-result" id="change-result"></div>
                 </div>
             </section>
 
@@ -135,9 +144,9 @@
                 </div>
 
                 <div class="sales-log-section">
-                    <h3>Recent Sales</h3>
-                    <div id="sales-log-list" class="sales-log-list">
-                        <p class="no-data">No sales today</p>
+                    <h3>Recent Bills</h3>
+                    <div id="recent-bills-list" class="sales-log-list">
+                        <p class="no-data">No bills today</p>
                     </div>
                 </div>
             </section>
@@ -164,6 +173,19 @@
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="closeItemModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="saveItem()">Save Item</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SELECT ITEM MODAL (for Edit / Delete) -->
+    <div id="select-item-modal" class="modal-overlay hidden" onclick="closeSelectItemModalOutside(event)">
+        <div class="modal-box">
+            <h3 id="select-modal-title">Select Item</h3>
+            <div class="select-item-list" id="select-item-list">
+                <!-- filled dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeSelectItemModal()">Cancel</button>
             </div>
         </div>
     </div>
